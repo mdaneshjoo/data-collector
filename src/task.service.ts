@@ -22,10 +22,9 @@ export class TasksService {
     private watchManService: WatchmanService
   ) { }
 
-  @Cron(CronExpression.EVERY_30_SECONDS, { waitForCompletion: true })
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { waitForCompletion: true })
   async fetchAirings() {
     try {
-      this.logger.log('Fetching Airings')
       const query = `query ($weekStart: Int, $weekEnd: Int, $page: Int) {
           Page(page: $page) {
             pageInfo {
@@ -210,7 +209,7 @@ export class TasksService {
       }
 
       while (true) {
-        this.logger.log(`Fetching page ${variables.page}`)
+        this.logger.log(`Fetching Airing page ${variables.page}`)
         const airing = await firstValueFrom(this.anilistApi(query, variables))
         if (!airing.data.Page?.airingSchedules || !airing.data.Page?.airingSchedules.length) {
           break
