@@ -1,7 +1,6 @@
 import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
 import { HydratedDocument, Types } from "mongoose";
 import {
-    CharacterConnection,
     MediaCoverImage,
     MediaFormat,
     MediaRank,
@@ -81,17 +80,6 @@ class Provider {
 
     @Prop()
     siteUrl?: string // String	The url for the media page on the AniList website
-}
-
-export class Characters {
-    name: CharacterName           // CharacterName  The names of the character
-    image?: CharacterImage        // CharacterImage Character images
-    description?: string          // String         A general description of the character
-    gender?: string              // String         The character's gender. Usually Male, Female, or Non-binary but can be any string.
-    dateOfBirth?: number      // FuzzyDate      The character's birth date
-    age?: string                 // String         The character's age. Note this is a string, not an int, it may contain further text and additional ages.
-    bloodType?: string           // String         The characters blood type
-
 }
 
 export class Studio {

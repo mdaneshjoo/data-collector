@@ -10,7 +10,9 @@ import slugify from 'slugify';
 import { Model, Types } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { WatchmanService } from '@dev-codenix/nest-watchman';
-
+import { unwrapError } from './utils';
+import { promises as fs } from 'fs';
+import * as path from 'path';
 @Injectable()
 export class TasksService {
   private readonly logger = new Logger(TasksService.name);
@@ -272,6 +274,8 @@ export class TasksService {
             mediaData.startDate = new Date(air.media.startDate.year, air.media.startDate.month - 1, air.media.startDate.day)
           }
 
+          await this.updateImage(mediaData)
+
           const media = await this.mediaModel.findOneAndUpdate(
             { slug: slugify(air.media.title.romaji, { lower: true, trim: true }) },
             mediaData,
@@ -281,21 +285,24 @@ export class TasksService {
           if (air.media?.relations?.edges?.length) {
             for (const element of air.media.relations.edges) {
               if (element?.node?.title?.romaji) {
+                const relatedData: Media = {
+                  provider: {
+                    name: ProviderName.AniList,
+                    siteUrl: element.node.siteUrl,
+                    media_id: element.node.id
+                  },
+                  title: element.node.title,
+                  slug: slugify(element.node.title.romaji, { lower: true, trim: true }),
+                  coverImage: element.node.coverImage,
+                  media: media._id,
+                  description: ''
+                }
+                await this.updateImage(relatedData)
                 const related = await this.mediaModel.findOneAndUpdate({
                   slug: slugify(element.node.title.romaji, { lower: true, trim: true }),
                 },
                   {
-                    $setOnInsert: {
-                      provider: {
-                        name: ProviderName.AniList,
-                        siteUrl: element.node.siteUrl,
-                        media_id: element.node.id
-                      },
-                      title: element.node.title,
-                      slug: slugify(element.node.title.romaji, { lower: true, trim: true }),
-                      coverImage: air.media.coverImage,
-                      media: media._id
-                    }
+                    $setOnInsert: relatedData
                   },
                   { new: true, upsert: true }
                 )
@@ -314,12 +321,37 @@ export class TasksService {
         variables.page++;
       }
     } catch (error) {
-      this.watchManService.watch(error, {})
+      const unwrappedError = unwrapError(error)
+      this.watchManService.watch(unwrappedError, {})
+      this.logger.error(unwrappedError)
     }
 
   }
 
+  private async updateImage(mediaData: Media) {
+    if (
+      mediaData?.coverImage
+    ) {
+      const covetImageKeys = Object.keys(mediaData.coverImage)
+      for (const key of covetImageKeys) {
+        if (key === 'color') continue
+        this.logger.log(`Downloading coverImage ${key}`);
+        if (mediaData.coverImage[key]) {
+          const localPath = await this.downloadImage(mediaData.coverImage[key]);
+          mediaData.coverImage[key] = localPath;
+        }
+      }
+    }
+
+    if (mediaData?.bannerImage) {
+      this.logger.log(`Downloading bannerImage`);
+      const localPath = await this.downloadImage(mediaData.bannerImage);
+      mediaData.bannerImage = localPath;
+    }
+  }
+
   anilistApi(query: string, variables: Record<string, unknown>): Observable<AxiosResponse<{ Page: Page }>> {
+    this.logger.log("Starting Anilist API Request")
     const body = JSON.stringify({
       query: query,
       variables: variables
@@ -329,11 +361,68 @@ export class TasksService {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-        }
+        },
       })
       .pipe(
         retry({ count: 3, delay: 60_000 }),
-        map((response) => response.data),
+        map((response) => {
+          this.logger.log("Anilist API Request Completed")
+          return response.data
+        }),
       )
   }
+
+  imageDownloader(url: string) {
+    const headers = {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      Accept: 'image/webp,image/apng,image/*,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.5',
+    };
+
+    return this.httpService.get(url, {
+      responseType: 'arraybuffer',
+      headers: headers,
+      timeout: 10_000,
+      onDownloadProgress: (progressEvent) => {
+        if (!progressEvent.progress) return
+        this.logger.debug(`Downloading Progress: %${Math.floor(progressEvent.progress * 100)}`,)
+      },
+    }).pipe(
+      retry({ count: 3, delay: 10_000 }),
+      map((response) => {
+        return response.data
+      })
+    )
+  }
+
+  async downloadImage(url: string): Promise<string> {
+    try {
+
+
+      const response = await firstValueFrom(
+        this.imageDownloader(url)
+      );
+      const buffer = Buffer.from(response, 'binary');
+
+      const fileName = path.basename(url);
+      const localDir = path.resolve(__dirname, '..', 'uploads', 'images');
+      await fs.mkdir(localDir, { recursive: true });
+      const localPath = path.join(localDir, fileName);
+
+      await fs.writeFile(localPath, buffer);
+      return fileName;
+    } catch (error) {
+      const unwrappedError = unwrapError(error)
+      this.watchManService.watch(unwrappedError, {
+        metaData: {
+          note: "this occurs when server unable to download the image, related image will be skipped",
+          reletad: "url"
+        }
+      })
+      this.logger.error(unwrappedError)
+      return ''
+    }
+  }
+
 }
