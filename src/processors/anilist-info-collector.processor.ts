@@ -1,206 +1,211 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
-import { AxiosResponse } from 'axios';
-import { catchError, firstValueFrom, map, Observable, retry } from 'rxjs';
-import { Page } from './providers/anilist';
-import { HttpService } from '@nestjs/axios';
-import * as dayjs from 'dayjs';
-import { Media, ProviderName, Studio, Trends } from './schemas/media';
-import slugify from 'slugify';
+import { Media, ProviderName, Studio, Trends } from '../schemas/media';
 import { Model, Types } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
+import { ProccessName, QueueName } from 'src/const';
+import { Process, Processor } from '@nestjs/bull';
+import { Job } from 'bull';
+import { HttpService } from '@nestjs/axios';
 import { WatchmanService } from '@dev-codenix/nest-watchman';
-import { unwrapError } from './utils';
-import { promises as fs } from 'fs';
+import * as dayjs from 'dayjs';
+import { Logger } from '@nestjs/common';
+import { firstValueFrom, map, Observable, retry } from 'rxjs';
+import { AxiosResponse } from 'axios';
+import { Page } from 'src/providers/anilist';
+import slugify from 'slugify';
+import { unwrapError } from 'src/utils';
 import * as path from 'path';
-@Injectable()
-export class TasksService {
-  private readonly logger = new Logger(TasksService.name);
-  constructor(private readonly httpService: HttpService,
+import { promises as fs } from 'fs';
+
+@Processor(QueueName.MEDIA_INFO_COLLECTOR)
+export class AnilistInfoCollectorProcessor {
+  private readonly logger = new Logger(AnilistInfoCollectorProcessor.name);
+
+  constructor(
+    private readonly httpService: HttpService,
     @InjectModel(Media.name)
     private mediaModel: Model<Media>,
     private watchManService: WatchmanService
   ) { }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { waitForCompletion: true })
-  async fetchAirings() {
+  @Process(ProccessName.ANILIST_AIRING_INFO_COLLECTOR_JOB)
+  async fetchAirings(job: Job<unknown>): Promise<void> {
     try {
       const query = `query ($weekStart: Int, $weekEnd: Int, $page: Int) {
-          Page(page: $page) {
-            pageInfo {
-              hasNextPage
-              total
-            }
-            airingSchedules(airingAt_greater: $weekStart, airingAt_lesser: $weekEnd) {
-              episode
-              airingAt
-              timeUntilAiring
-              media {
-                id
-                idMal
-                title {
-                  romaji
-                  english
-                  native
-                  userPreferred
-                }
-        
-                relations {
-                  edges {
-                    relationType
-                    node {
-                      title {
-                        romaji
-                      }
-                    }
-                  }
-                }
-                siteUrl
-                genres
-                status
-                season
-                countryOfOrigin
-                source
-                updatedAt
-                coverImage {
-                  extraLarge
-                  large
-                  medium
-                  color
-                }
-                synonyms
-                tags {
-                  id
-                  name
-                  description
-                  category
-                  rank
-                  isGeneralSpoiler
-                  isMediaSpoiler
-                  isAdult
-                }
-                externalLinks {
-                  url
-                  site
-                  type
-                  color
-                  isDisabled
-                }
-                rankings {
-                  id
-                  rank
-                  type
-                  format
-                  year
-                  season
-                  allTime
-                  context
-                }
-                type
-                format
-                description
-                duration
-                seasonYear
-                chapters
-                volumes
-                trailer {
-                  id
-                  site
-                  thumbnail
-                }
-                bannerImage
-                averageScore
-                meanScore
-                popularity
-                trending
-                isAdult
-                characters {
-                  nodes {
-                    name {
-                      first
-                      middle
-                      last
-                      full
-                      native
-                      alternative
-                      alternativeSpoiler
-                      userPreferred
-                    }
-                    image {
-                      large
-                      medium
-                    }
-                    description
-                    gender
-                    dateOfBirth {
-                      year
-                      month
-                      day
-                    }
-                    age
-                    bloodType
-                  }
-                }
-                studios {
-                  nodes {
-                    name
-                  }
-                }
-                endDate {
-                  year
-                  month
-                  day
-                }
-                nextAiringEpisode {
-                  airingAt
-                  timeUntilAiring
-                  episode
-                }
-                trends {
-                  nodes {
-                    date
-                    trending
-                    averageScore
-                    popularity
-                    inProgress
-                    releasing
-                    episode
-                  }
-                }
-                startDate {
-                  year
-                  month
-                  day
-                }
-                recommendations {
-                  nodes {
-                    media {
-                      title {
-                        romaji
-                        english
-                        native
-                        userPreferred
-                      }
-                    }
-                  }
-                }
-                stats {
-                  scoreDistribution {
-                    score
-                    amount
-                  }
-                  statusDistribution {
-                    status
-                    amount
-                  }
-                }
-                episodes
-              }
-            }
-          }
-        }
-        
-        `;
+             Page(page: $page) {
+               pageInfo {
+                 hasNextPage
+                 total
+               }
+               airingSchedules(airingAt_greater: $weekStart, airingAt_lesser: $weekEnd) {
+                 episode
+                 airingAt
+                 timeUntilAiring
+                 media {
+                   id
+                   idMal
+                   title {
+                     romaji
+                     english
+                     native
+                     userPreferred
+                   }
+           
+                   relations {
+                     edges {
+                       relationType
+                       node {
+                         title {
+                           romaji
+                         }
+                       }
+                     }
+                   }
+                   siteUrl
+                   genres
+                   status
+                   season
+                   countryOfOrigin
+                   source
+                   updatedAt
+                   coverImage {
+                     extraLarge
+                     large
+                     medium
+                     color
+                   }
+                   synonyms
+                   tags {
+                     id
+                     name
+                     description
+                     category
+                     rank
+                     isGeneralSpoiler
+                     isMediaSpoiler
+                     isAdult
+                   }
+                   externalLinks {
+                     url
+                     site
+                     type
+                     color
+                     isDisabled
+                   }
+                   rankings {
+                     id
+                     rank
+                     type
+                     format
+                     year
+                     season
+                     allTime
+                     context
+                   }
+                   type
+                   format
+                   description
+                   duration
+                   seasonYear
+                   chapters
+                   volumes
+                   trailer {
+                     id
+                     site
+                     thumbnail
+                   }
+                   bannerImage
+                   averageScore
+                   meanScore
+                   popularity
+                   trending
+                   isAdult
+                   characters {
+                     nodes {
+                       name {
+                         first
+                         middle
+                         last
+                         full
+                         native
+                         alternative
+                         alternativeSpoiler
+                         userPreferred
+                       }
+                       image {
+                         large
+                         medium
+                       }
+                       description
+                       gender
+                       dateOfBirth {
+                         year
+                         month
+                         day
+                       }
+                       age
+                       bloodType
+                     }
+                   }
+                   studios {
+                     nodes {
+                       name
+                     }
+                   }
+                   endDate {
+                     year
+                     month
+                     day
+                   }
+                   nextAiringEpisode {
+                     airingAt
+                     timeUntilAiring
+                     episode
+                   }
+                   trends {
+                     nodes {
+                       date
+                       trending
+                       averageScore
+                       popularity
+                       inProgress
+                       releasing
+                       episode
+                     }
+                   }
+                   startDate {
+                     year
+                     month
+                     day
+                   }
+                   recommendations {
+                     nodes {
+                       media {
+                         title {
+                           romaji
+                           english
+                           native
+                           userPreferred
+                         }
+                       }
+                     }
+                   }
+                   stats {
+                     scoreDistribution {
+                       score
+                       amount
+                     }
+                     statusDistribution {
+                       status
+                       amount
+                     }
+                   }
+                   episodes
+                 }
+               }
+             }
+           }
+           
+           `;
 
       const variables = {
         weekStart: Math.floor(new Date(dayjs().startOf("w").format("YYYY-MM-DD")).getTime() / 1000),
@@ -210,8 +215,11 @@ export class TasksService {
 
       while (true) {
         this.logger.log(`Fetching Airing page ${variables.page}`)
+        job.log(`Fetching Airing page ${variables.page}`)
         const airing = await firstValueFrom(this.anilistApi(query, variables))
         if (!airing.data.Page?.airingSchedules || !airing.data.Page?.airingSchedules.length) {
+          this.logger.log(`No airing found for week ${variables.weekStart} - ${variables.weekEnd}`)
+          job.log(`No airing found for week ${variables.weekStart} - ${variables.weekEnd}`)
           break
         }
         for (const air of airing.data.Page.airingSchedules) {
@@ -293,7 +301,6 @@ export class TasksService {
                   title: element.node.title,
                   slug: slugify(element.node.title.romaji, { lower: true, trim: true }),
                   coverImage: element.node.coverImage,
-                  media: media._id,
                   description: ''
                 }
                 await this.updateImage(relatedData)
@@ -315,6 +322,7 @@ export class TasksService {
 
         if (!airing.data.Page.pageInfo.hasNextPage) {
           this.logger.log(`Fetching Airings Completed`)
+          job.log(`Fetching Airings Completed`)
           break
         }
         variables.page++;
@@ -323,6 +331,7 @@ export class TasksService {
       const unwrappedError = unwrapError(error)
       this.watchManService.watch(unwrappedError, {})
       this.logger.error(unwrappedError)
+      job.log(unwrappedError)
     }
 
   }
@@ -423,5 +432,4 @@ export class TasksService {
       return ''
     }
   }
-
 }

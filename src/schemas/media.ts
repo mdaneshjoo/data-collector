@@ -14,7 +14,7 @@ import {
     MediaType,
 } from "src/providers/anilist";
 import { ExternalLinkType } from "src/providers/anilist/media";
-import { CharacterImage, CharacterName } from "src/providers/anilist/character";
+import { si } from 'nyaapi';
 
 export type MediaDocument = HydratedDocument<Media>;
 
@@ -28,10 +28,6 @@ export class ExternalLinks {
     isDisabled?: boolean // Boolean Whether the link is disabled
 }
 
-export enum EpisodeQuality { }
-export enum TorrentType { }
-
-
 export class Subtitles {
     @Prop()
     language: string
@@ -39,31 +35,46 @@ export class Subtitles {
     @Prop()
     path: string
 }
-export class EpisodeDownload {
-    @Prop()
+export enum TorrentProvider {
+    NyaaSi = 'NyaaSi',
+}
+export class EnrichedTorrentItem implements Partial<si.Torrent> {
+    constructor(torrent: Partial<si.Torrent>) {
+        Object.assign(this, torrent)
+    }
+    date: string;
+    quality: string;
+    codecs: string[];
+    torrent: string;
+    magnet: string;
+    name: string;
+    id: string;
+    provide?: TorrentProvider
+}
+export class EpisodeItem {
+    @Prop({ default: [] })
     subtitles: Subtitles[]
 
     @Prop()
-    quality: EpisodeQuality
+    quality: string
 
     @Prop()
+    codecs: string[];
+
+    @Prop({ default: '' })
     url: string
 
     @Prop()
-    torrent_type: TorrentType
-
-    @Prop()
-    torrent: string
+    torrent: EnrichedTorrentItem
 
 }
 
 export class Episode {
     @Prop({ default: 0 })
     episode?: number
+
     @Prop()
-    release_date?: Date
-    @Prop()
-    downloads?: EpisodeDownload[]
+    downloads?: EpisodeItem[]
 }
 
 
@@ -100,7 +111,7 @@ export class Trends {
     constructor(trend: any) {
         Object.assign(this, trend)
     }
-    date: Date           // Int!     The day the data was recorded (timestamp)
+    date: number           // Int!     The day the data was recorded (timestamp)
     trending: number       // Int!     The amount of media activity on the day
     averageScore: number  // Int      A weighted average score of all the user's scores of the media
     popularity: number    // Int      The number of users with the media on their list
@@ -127,8 +138,6 @@ export class Media {
     @Prop()
     description: string;
 
-
-
     // optional proprties
     @Prop()
     genres?: string[];
@@ -147,6 +156,7 @@ export class Media {
 
     @Prop()
     episodes?: Episode[];
+
     total_episodes?: number
     @Prop()
     idMal?: number //The mal id of the media
@@ -184,7 +194,6 @@ export class Media {
     @Prop()
     updatedAt?: number
 
-
     @Prop()
     bannerImage?: string // String	The banner image of the media
 
@@ -220,10 +229,6 @@ export class Media {
     @Prop({ type: [{ type: Types.ObjectId, ref: Media.name }], default: [] })
     relateds?: Types.ObjectId[]
 
-    @Prop({ type: Types.ObjectId, ref: Media.name, default: null })
-    media?: Types.ObjectId;
-
-
     @Prop()
     studios?: Studio[]  // StudioConnection	The companies who produced the media
 
@@ -245,11 +250,8 @@ export class Media {
     @Prop()
     rankings?: MediaRank[] // [MediaRank]	The ranking of the media in a particular time span and format compared to other media
 
-
     @Prop({ type: [{ type: Types.ObjectId, ref: Media.name }], default: [] })
     recommendations?: Types.ObjectId[]
-
-
 
     @Prop()
     stats?: MediaStats
