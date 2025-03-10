@@ -15,6 +15,7 @@ import * as basicAuth from "express-basic-auth";
 import { NyaaProcessor } from './processors/nyaa-torrent.processor';
 import { AnilistInfoCollectorProcessor } from './processors/anilist-info-collector.processor';
 import { BullAdapter } from '@bull-board/api/bullAdapter';
+import { NyaaTorrentController } from './controllers/nyaa-torrent.controller';
 
 @Module({
   imports: [
@@ -52,6 +53,8 @@ import { BullAdapter } from '@bull-board/api/bullAdapter';
         NYAA_TORRENT_COLLECTOR_JOB_BACKOFF_delay: Joi.number().default(MinuteInMili.TEN_MINUTE),
         NYAA_TORRENT_COLLECTOR_JOB_BACKOFF_TYPE: Joi.string().allow('fixed', 'exponential').default('fixed'),
         BULLBOARD_ADMIN_PASSWORD: Joi.string().required(),
+        KAFKA_BROKERS: Joi.string().required(),
+        APP_PORT: Joi.number().port().default(3000),
       }),
     }),
     MongooseModule.forRootAsync({
@@ -104,7 +107,7 @@ import { BullAdapter } from '@bull-board/api/bullAdapter';
       },
     )
   ],
-  controllers: [],
+  controllers: [NyaaTorrentController],
   providers: [QueueService, AnilistInfoCollectorProcessor, NyaaProcessor],
 
 })

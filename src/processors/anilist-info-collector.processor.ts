@@ -319,7 +319,7 @@ export class AnilistInfoCollectorProcessor {
           }
 
         }
-
+        
         if (!airing.data.Page.pageInfo.hasNextPage) {
           this.logger.log(`Fetching Airings Completed`)
           job.log(`Fetching Airings Completed`)
@@ -392,10 +392,6 @@ export class AnilistInfoCollectorProcessor {
       responseType: 'arraybuffer',
       headers: headers,
       timeout: 10_000,
-      onDownloadProgress: (progressEvent) => {
-        if (!progressEvent.progress) return
-        this.logger.debug(`Downloading Progress: %${Math.floor(progressEvent.progress * 100)}`,)
-      },
     }).pipe(
       retry({ count: 3, delay: 10_000 }),
       map((response) => {

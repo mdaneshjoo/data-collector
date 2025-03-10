@@ -13,3 +13,8 @@ export enum ProccessName {
 export enum MinuteInMili {
     TEN_MINUTE = 10 * 60 * 1000,
 }
+
+
+export enum Topics{
+    NYAA_TORRENT_DOWNLOADER = "nyaa_torrent_downloader",
+}
