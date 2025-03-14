@@ -6,9 +6,9 @@ import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const configService = app.get(ConfigService)
-  const KAFKA_BROKERS = configService.getOrThrow<string>("KAFKA_BROKERS")
-  const APP_PORT = configService.getOrThrow<number>("APP_PORT")
+  const configService = app.get(ConfigService);
+  const KAFKA_BROKERS = configService.getOrThrow<string>('KAFKA_BROKERS');
+  const APP_PORT = configService.getOrThrow<number>('APP_PORT');
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.KAFKA,
     options: {
@@ -24,8 +24,9 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
 
-  const queueService = app.get(QueueService)
-  await queueService.runImmediateShedules()
+  const queueService = app.get(QueueService);
+  await queueService.runImmediateShedules();
   await app.listen(APP_PORT);
 }
+
 bootstrap();

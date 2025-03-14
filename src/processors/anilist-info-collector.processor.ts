@@ -24,8 +24,9 @@ export class AnilistInfoCollectorProcessor {
     private readonly httpService: HttpService,
     @InjectModel(Media.name)
     private mediaModel: Model<Media>,
-    private watchManService: WatchmanService
-  ) { }
+    private watchManService: WatchmanService,
+  ) {
+  }
 
   @Process(ProccessName.ANILIST_AIRING_INFO_COLLECTOR_JOB)
   async fetchAirings(job: Job<unknown>): Promise<void> {
@@ -208,26 +209,32 @@ export class AnilistInfoCollectorProcessor {
            `;
 
       const variables = {
-        weekStart: Math.floor(new Date(dayjs().startOf("w").format("YYYY-MM-DD")).getTime() / 1000),
-        weekEnd: Math.floor(new Date(dayjs().endOf("w").format("YYYY-MM-DD")).getTime() / 1000),
-        page: 1
-      }
+        weekStart: Math.floor(new Date(dayjs().startOf('week').hour(0).minute(0).second(0).format('YYYY-MM-DD')).getTime() / 1000),
+        weekEnd: Math.floor(new Date(dayjs().endOf('w').add(1, 'day').format('YYYY-MM-DD')).getTime() / 1000),
+        page: 1,
+      };
+      const startWeekDate = new Date(variables.weekStart * 1000).toISOString().split('T')[0];
+      const endWeekDate = new Date(variables.weekEnd * 1000).toISOString().split('T')[0];
 
       while (true) {
-        this.logger.log(`Fetching Airing page ${variables.page}`)
-        job.log(`Fetching Airing page ${variables.page}`)
-        const airing = await firstValueFrom(this.anilistApi(query, variables))
+
+
+        this.logger.log(`Fetching Airing page ${variables.page}, Week: ${startWeekDate} - ${endWeekDate}`);
+        job.log(`Fetching Airing page ${variables.page}, Week: ${startWeekDate} - ${endWeekDate}`);
+
+        const airing = await firstValueFrom(this.anilistApi(query, variables));
+
         if (!airing.data.Page?.airingSchedules || !airing.data.Page?.airingSchedules.length) {
-          this.logger.log(`No airing found for week ${variables.weekStart} - ${variables.weekEnd}`)
-          job.log(`No airing found for week ${variables.weekStart} - ${variables.weekEnd}`)
-          break
+          this.logger.log(`No airing found for week ${variables.weekStart} - ${variables.weekEnd}`);
+          job.log(`No airing found for week ${variables.weekStart} - ${variables.weekEnd}`);
+          break;
         }
         for (const air of airing.data.Page.airingSchedules) {
           const mediaData: Media = {
             provider: {
               name: ProviderName.AniList,
               siteUrl: air.media.siteUrl,
-              media_id: air.media.id
+              media_id: air.media.id,
             },
             airingSchedule: {
               airingAt: new Date(air.airingAt * 1000),
@@ -271,24 +278,24 @@ export class AnilistInfoCollectorProcessor {
             total_episodes: air.media.episodes || 0,
             trends: air.media.trends.nodes?.map((trend) => new Trends(trend)),
             stats: air.media.stats,
-          }
+          };
 
           if (air.media.endDate.year || air.media.endDate.month || air.media.endDate.day) {
-            mediaData.endDate = new Date(air.media.endDate.year, air.media.endDate.month - 1, air.media.endDate.day)
+            mediaData.endDate = new Date(air.media.endDate.year, air.media.endDate.month - 1, air.media.endDate.day);
           }
 
           if (air.media.startDate.year || air.media.startDate.month || air.media.startDate.day) {
-            mediaData.startDate = new Date(air.media.startDate.year, air.media.startDate.month - 1, air.media.startDate.day)
+            mediaData.startDate = new Date(air.media.startDate.year, air.media.startDate.month - 1, air.media.startDate.day);
           }
 
-          await this.updateImage(mediaData)
+          await this.updateImage(mediaData);
 
           const media = await this.mediaModel.findOneAndUpdate(
             { slug: slugify(air.media.title.romaji, { lower: true, trim: true }) },
             mediaData,
             { new: true, upsert: true },
           );
-          const relatedIds: Types.ObjectId[] = []
+          const relatedIds: Types.ObjectId[] = [];
           if (air.media?.relations?.edges?.length) {
             for (const element of air.media.relations.edges) {
               if (element?.node?.title?.romaji) {
@@ -296,42 +303,53 @@ export class AnilistInfoCollectorProcessor {
                   provider: {
                     name: ProviderName.AniList,
                     siteUrl: element.node.siteUrl,
-                    media_id: element.node.id
+                    media_id: element.node.id,
                   },
                   title: element.node.title,
                   slug: slugify(element.node.title.romaji, { lower: true, trim: true }),
                   coverImage: element.node.coverImage,
-                  description: ''
-                }
-                await this.updateImage(relatedData)
+                  description: '',
+                  media: media._id,
+                };
+                await this.updateImage(relatedData);
                 const related = await this.mediaModel.findOneAndUpdate({
-                  slug: slugify(element.node.title.romaji, { lower: true, trim: true }),
-                },
-                  {
-                    $setOnInsert: relatedData
+                    slug: slugify(element.node.title.romaji, { lower: true, trim: true }),
                   },
-                  { new: true, upsert: true }
-                )
-                relatedIds.push(related._id)
+                  {
+                    $setOnInsert: relatedData,
+                  },
+                  { new: true, upsert: true },
+                );
+                relatedIds.push(related._id);
               }
             }
-            await this.mediaModel.findByIdAndUpdate(media._id, { related: relatedIds })
+            const up = await this.mediaModel.updateOne(
+              {
+                _id: media._id,
+              },
+              {
+                $set: {
+                  related: relatedIds,
+                },
+              },
+            );
+            console.log(up);
           }
 
         }
-        
+
         if (!airing.data.Page.pageInfo.hasNextPage) {
-          this.logger.log(`Fetching Airings Completed`)
-          job.log(`Fetching Airings Completed`)
-          break
+          this.logger.log(`Fetching Airings Completed`);
+          job.log(`Fetching Airings Completed`);
+          break;
         }
         variables.page++;
       }
     } catch (error) {
-      const unwrappedError = unwrapError(error)
-      this.watchManService.watch(unwrappedError, {})
-      this.logger.error(unwrappedError)
-      job.log(unwrappedError)
+      const unwrappedError = unwrapError(error);
+      this.watchManService.watch(unwrappedError, {});
+      this.logger.error(unwrappedError);
+      job.log(unwrappedError);
     }
 
   }
@@ -340,9 +358,9 @@ export class AnilistInfoCollectorProcessor {
     if (
       mediaData?.coverImage
     ) {
-      const covetImageKeys = Object.keys(mediaData.coverImage)
+      const covetImageKeys = Object.keys(mediaData.coverImage);
       for (const key of covetImageKeys) {
-        if (key === 'color') continue
+        if (key === 'color') continue;
         this.logger.log(`Downloading coverImage ${key}`);
         if (mediaData.coverImage[key]) {
           const localPath = await this.downloadImage(mediaData.coverImage[key]);
@@ -359,11 +377,11 @@ export class AnilistInfoCollectorProcessor {
   }
 
   anilistApi(query: string, variables: Record<string, unknown>): Observable<AxiosResponse<{ Page: Page }>> {
-    this.logger.log("Starting Anilist API Request")
+    this.logger.log('Starting Anilist API Request');
     const body = JSON.stringify({
       query: query,
-      variables: variables
-    })
+      variables: variables,
+    });
     return this.httpService
       .post('https://graphql.anilist.co', body, {
         headers: {
@@ -374,10 +392,10 @@ export class AnilistInfoCollectorProcessor {
       .pipe(
         retry({ count: 3, delay: 60_000 }),
         map((response) => {
-          this.logger.log("Anilist API Request Completed")
-          return response.data
+          this.logger.log('Anilist API Request Completed');
+          return response.data;
         }),
-      )
+      );
   }
 
   imageDownloader(url: string) {
@@ -395,9 +413,9 @@ export class AnilistInfoCollectorProcessor {
     }).pipe(
       retry({ count: 3, delay: 10_000 }),
       map((response) => {
-        return response.data
-      })
-    )
+        return response.data;
+      }),
+    );
   }
 
   async downloadImage(url: string): Promise<string> {
@@ -405,7 +423,7 @@ export class AnilistInfoCollectorProcessor {
 
 
       const response = await firstValueFrom(
-        this.imageDownloader(url)
+        this.imageDownloader(url),
       );
       const buffer = Buffer.from(response, 'binary');
 
@@ -417,15 +435,15 @@ export class AnilistInfoCollectorProcessor {
       await fs.writeFile(localPath, buffer);
       return fileName;
     } catch (error) {
-      const unwrappedError = unwrapError(error)
+      const unwrappedError = unwrapError(error);
       this.watchManService.watch(unwrappedError, {
         metaData: {
-          note: "this occurs when server unable to download the image, related image will be skipped",
-          reletad: "url"
-        }
-      })
-      this.logger.error(unwrappedError)
-      return ''
+          note: 'this occurs when server unable to download the image, related image will be skipped',
+          reletad: 'url',
+        },
+      });
+      this.logger.error(unwrappedError);
+      return '';
     }
   }
 }

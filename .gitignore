@@ -57,3 +57,11 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 
 uploads
+
+redis/*
+
+mongo-data
+
+redis_data
+
+/redis/

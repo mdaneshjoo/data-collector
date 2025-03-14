@@ -229,6 +229,9 @@ export class Media {
     @Prop({ type: [{ type: Types.ObjectId, ref: Media.name }], default: [] })
     relateds?: Types.ObjectId[]
 
+    @Prop({ type: Types.ObjectId, ref: Media.name, default: null })
+    media?: Types.ObjectId;
+
     @Prop()
     studios?: Studio[]  // StudioConnection	The companies who produced the media
 
